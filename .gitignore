@@ -1,0 +1,22 @@
+# MSVS specific
+
+# Directories
+x64/
+Win32/
+ipch/
+/.vs
+/.vscode
+
+
+# Files
+*.dll
+*.aps
+*.sdf
+*.v11*
+*.v12*
+*.opensdf
+*.VC.db
+*.user
+
+# Doc not in git (only UEFI spec)
+doc/
