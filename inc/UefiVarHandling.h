@@ -1,5 +1,9 @@
-// SetBootNext.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
-//
+//-----------------------------------------------
+// Module name: UefiVarHandling
+//-----------------------------------------------
+// Description: This class handle the interaction with
+//				the UEFI Variable
+//-----------------------------------------------
 
 #include "pch.h"
 

@@ -1,5 +1,6 @@
-// SetBootNext.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
-//
+//------------------------------------------------------------------------------
+// implementation of the Consolhandling class
+//------------------------------------------------------------------------------
 
 #include "..\inc\pch.h"
 #include "..\inc\ConsolHandling.h"
