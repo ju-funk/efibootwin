@@ -34,6 +34,121 @@ UefiVarHandling::DynData UefiVarHandling::DynData::operator=(const DynData &oth)
     return *this;
 }
 
+UefiVarHandling::_EFI_DEVICE_PATH_PROTOCOL::_EFI_DEVICE_PATH_PROTOCOL(void *ptr, _MEFI_DEVICE_PATH_PROTOCOL medpp)
+{
+    _EFI_DEVICE_PATH_PROTOCOL * edpp = (_EFI_DEVICE_PATH_PROTOCOL *)ptr;
+    Type      = edpp->Type    = medpp.Type; 
+    SubType   = edpp->SubType = medpp.SubType;
+    Length    = edpp->Length  = (UINT16)medpp.Data.size() + 4;
+
+    DWORD idx = 0;
+    for (UINT8 by : medpp.Data)
+    {
+        //Data[idx]         = by;
+        edpp->Data[idx++] = by;
+    }
+}
+
+
+
+UefiVarHandling::DynData UefiVarHandling::DynData::operator=(_MEFI_LOAD_OPTION right)
+{
+    Resize(right.GetSize());
+    EFI_LOAD_OPTION *elo = (EFI_LOAD_OPTION *)GetMem();
+
+    elo->Attributes         = right.Attributes;
+    elo->FilePathListLength = 0;
+    wmemcpy(elo->Description, right.Description.c_str(), right.Description.length() + 1);
+    DWORD idx = (DWORD)((size_t)&elo->Description - (size_t)elo + (size_t)(right.Description.length() + 1) * 2);
+
+
+    for (MEFI_DEVICE_PATH_PROTOCOL mdpp : right.vFilePathList)
+    {
+        EFI_DEVICE_PATH_PROTOCOL edpp(GetMem(idx), mdpp);
+
+        elo->FilePathListLength += edpp.Length;
+        idx += edpp.Length;
+    }
+
+    for (UINT8 by : right.OptData)
+        idx += SetMem(by, idx);
+
+    if(idx != GetSize())
+        SetError();
+
+    return *this;
+}
+
+
+UefiVarHandling::_MEFI_DEVICE_PATH_PROTOCOL::_MEFI_DEVICE_PATH_PROTOCOL(EFI_DEVICE_PATH_PROTOCOL *dpp)
+{
+    Type    = dpp->Type;
+    SubType = dpp->SubType;
+    int Length  = dpp->Length - 4;
+
+    if (Length > 0)
+    {
+        for (int i = 0; i < Length; ++i)
+            Data.push_back(dpp->Data[i]);
+    }
+}
+
+DWORD  UefiVarHandling::_MEFI_LOAD_OPTION::GetSize()
+{
+    DWORD sumlen = 0;
+
+    for (MEFI_DEVICE_PATH_PROTOCOL mddp : vFilePathList)
+        sumlen += mddp.GetSize();
+
+    if(sumlen == 0)
+        return 0;
+    else
+        return sumlen + (DWORD) OptData.size() + (DWORD)((Description.length() + 1) * 2) + sizeof(UINT32) + sizeof(UINT16);
+}
+
+
+UefiVarHandling::_MEFI_LOAD_OPTION::_MEFI_LOAD_OPTION(DynData dd, bool all /*= false*/)
+{
+    EFI_LOAD_OPTION *elo = (EFI_LOAD_OPTION *)dd.GetMem();
+
+    Attributes  = elo->Attributes;
+    Description = elo->Description;
+    bool end;
+    DWORD idx = (DWORD) ((size_t)&elo->Description - (size_t)elo + (size_t) (Description.length() + 1) * 2);
+    UINT16 sumlen = 0;
+
+    if (all)
+    {
+        do
+        {
+            EFI_DEVICE_PATH_PROTOCOL *edpp = (EFI_DEVICE_PATH_PROTOCOL *)dd.GetMem(idx);
+            MEFI_DEVICE_PATH_PROTOCOL medpp(edpp);
+            vFilePathList.push_back(medpp);
+            sumlen += medpp.GetSize();
+            idx += medpp.GetSize();
+            end = medpp.Type != 0x7F || medpp.SubType != 0xFF;
+
+        } while (end);
+
+
+        DWORD len = dd.GetSize() - idx;
+        for (DWORD i = 0; i < len; ++i)
+            OptData.push_back(*(UINT8 *)dd.GetMem(idx + i));
+
+
+        if (elo->FilePathListLength != sumlen || GetSize() != dd.GetSize())
+        {
+            vFilePathList.clear();
+            OptData.clear();
+            Description.clear();
+        }
+    }
+}
+
+
+
+
+
 
 UefiVarHandling::~UefiVarHandling()
 {
@@ -141,7 +256,7 @@ void UefiVarHandling::SetStateStrings(std::function<void (DWORD dErr, twstring &
 {
     DWORD Err[] = {NO_ERROR, ERROR_NOACCESS, STATUS_INVALID_PARAMETER, ERROR_INVALID_FUNCTION, ERROR_PRIVILEGE_NOT_HELD, ERROR_NOT_ALL_ASSIGNED,
                    ERROR_ENVVAR_NOT_FOUND,
-                   UVH_Error_Var_NotFound };
+                   UVH_Error_Var_NotFound, UVH_Error_Size_Differ };
 
 
     for (DWORD err : Err)
@@ -338,7 +453,7 @@ bool UefiVarHandling::SetOrderVariable(const twstring &VarName, tvInt vInts)
 
 
 
-UefiVarHandling::tvMEFI_LOAD_OPTION UefiVarHandling::EnumVariableData(const twstring &VarName, bool bAll)
+UefiVarHandling::tvMEFI_LOAD_OPTION UefiVarHandling::EnumVariableData(const twstring &VarName, bool bAllVar, bool bAllData)
 {
     DynData Data;
     tvMEFI_LOAD_OPTION strs;
@@ -350,13 +465,10 @@ UefiVarHandling::tvMEFI_LOAD_OPTION UefiVarHandling::EnumVariableData(const twst
 
         if (GetFirmVar(vn.c_str(), L"{8be4df61-93ca-11d2-aa0d-00e098032b8c}", Data, false) > 0)
         {
-            EFI_LOAD_OPTION *elo = (EFI_LOAD_OPTION *)Data.GetMem();
-            MEFI_LOAD_OPTION melo;
-            melo.Description = elo->Description;
-            melo.Attributes  = elo->Attributes;
+            MEFI_LOAD_OPTION melo(Data, bAllData);
             strs.push_back(melo);
         }
-        else if(!bAll)
+        else if(!bAllVar)
             break;
         
         if(Data.GetSize() == 0)
@@ -371,8 +483,45 @@ UefiVarHandling::tvMEFI_LOAD_OPTION UefiVarHandling::EnumVariableData(const twst
 
 
 
+int UefiVarHandling::ToggleActive(const twstring &VarName)
+{
+    DynData Data(0);
+
+    Data = GetFirmEnvVar(VarName);
+
+    if (Data)
+    {
+        EFI_LOAD_OPTION *elo = (EFI_LOAD_OPTION *)Data.GetMem();
+        elo->Attributes = elo->Attributes ^ LOAD_OPTION_ACTIVE;
+        return SetFirmEnvVar(VarName, Data) ? elo->Attributes & LOAD_OPTION_ACTIVE : -1;
+    }
+
+    return -1;
+}
 
     
+bool UefiVarHandling::ChangeDescription(const twstring &VarName, const twstring &Descript)
+{
+    DynData Data(0);
+
+    Data = GetFirmEnvVar(VarName);
+
+    if (Data)
+    {
+        MEFI_LOAD_OPTION melo(Data, true);
+        if (melo)
+        {
+            melo.Description = Descript;
+            Data = melo;
+            return SetFirmEnvVar(VarName, Data);
+        }
+        else
+            nStatus = UVH_Error_Size_Differ;
+    }
+
+    return false;
+}
+
 
 
 /*

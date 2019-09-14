@@ -13,6 +13,10 @@ const DWORD LOAD_OPTION_ACTIVE = 0x00000001;
 
 class UefiVarHandling
 {
+public:
+    struct _MEFI_DEVICE_PATH_PROTOCOL;
+    struct _MEFI_LOAD_OPTION;
+
 private:
     struct deleter
     {
@@ -58,6 +62,8 @@ private:
             return sizeof(T); 
         }
 
+        DynData operator=(_MEFI_LOAD_OPTION right);
+
         void SetError() {Resize(0); }
     };
 
@@ -77,10 +83,14 @@ private:
     //*******************************************************
     typedef struct _EFI_DEVICE_PATH_PROTOCOL 
     {
-        UINT8 Type;
-        UINT8 SubType;
-        UINT8 Length[2];
-        UINT8 Data[2];        // kann auch länger sein
+        UINT8  Type;
+        UINT8  SubType;
+        UINT16 Length;
+        UINT8  Data[1];        // kann auch länger sein
+
+        _EFI_DEVICE_PATH_PROTOCOL() {};
+        _EFI_DEVICE_PATH_PROTOCOL(void *ptr, _MEFI_DEVICE_PATH_PROTOCOL medpp);
+
     } EFI_DEVICE_PATH_PROTOCOL;
 
 
@@ -100,7 +110,6 @@ private:
                                                      // The number of bytes in OptionalData can be computed by subtracting 
                                                      //                         the starting offset of OptionalData from 
                                                      //                         total size in bytes of the EFI_LOAD_OPTION.
-
     } EFI_LOAD_OPTION;          
 
 
@@ -119,15 +128,23 @@ private:
 public:
     typedef struct _MEFI_DEVICE_PATH_PROTOCOL
     {
-        UINT8 Type;
-        UINT8 SubType;
-        UINT8 Length[2];
+        _MEFI_DEVICE_PATH_PROTOCOL(EFI_DEVICE_PATH_PROTOCOL *dpp);
+
+        UINT8  Type;
+        UINT8  SubType;
         std::vector<UINT8> Data;
+        UINT16 GetSize() {return (UINT16) Data.size() + 4; }
     } MEFI_DEVICE_PATH_PROTOCOL;
 
 
     typedef struct _MEFI_LOAD_OPTION
     {
+        _MEFI_LOAD_OPTION(void) {};
+        _MEFI_LOAD_OPTION(DynData dd, bool all = false);
+
+        operator bool() { return GetSize() > 0; }
+
+        DWORD  GetSize();
         UINT32 Attributes;
         twstring Description;
         std::vector<MEFI_DEVICE_PATH_PROTOCOL> vFilePathList;
@@ -162,11 +179,19 @@ public:
 
     bool DeleteBootVariable(const twstring &VarName);
     
-    tvMEFI_LOAD_OPTION EnumVariableData(const twstring &VarName, bool bAll);
+    // bAllVar  = true  scanning all Varible from 0000 to FFFF
+    //            false stopping when Varible XXXX not exist
+    // bAllData = true  in tvMEFI_LOAD_OPTION all Data from Variable XXXX
+    //            false only the Attribute and the Description is in tvMEFI_LOAD_OPTION
+    tvMEFI_LOAD_OPTION EnumVariableData(const twstring &VarName, bool bAllVar, bool bAllData);
 
     tvInt GetOrderVariable(const twstring &VarName);
     
     bool SetOrderVariable(const twstring &VarName, tvInt vInts);
+
+    int ToggleActive(const twstring &VarName);
+
+    bool ChangeDescription(const twstring &VarName, const twstring &Descript);
 };
 
 

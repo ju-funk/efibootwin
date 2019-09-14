@@ -18,12 +18,14 @@ public:
     ConsolHandling();
 
 private:
-    enum eState {eUnknown, eOnly, eOneStr, eOneInt, eMoreInt};  // eOnly = no more param | eOneString = next param must be String | eOneInt = next param must be a Initeger
+    enum eState {eUnknown, eOnly, eOneStr, eOneInt, eMoreInt, eStrStr, eIntStr};
+               // eOnly = no more param | eOneString = next param must be String | eOneInt = next param must be a integer
 
 
     class ParamStruct;
     typedef std::vector<ParamStruct> tvParamStruct;
     typedef std::map<wchar_t, size_t> tmCommands;
+
     class ParamStruct
     {
     public:
@@ -34,24 +36,24 @@ private:
         ParamStruct(tfunc Cmd = &ConsolHandling::Unknow) : func(Cmd), iState(eUnknown) {}
 
 
-        void  SetParam(twstring param) { wStr = param; }
+        void  SetParam(twstring param) { vStr.push_back(param); }
         void  SetParam(int param) { viIdx.push_back(param); }
-        twstring  GetParam(void) { return wStr; }
-        tvInt GetvParam(void) { return viIdx; }
+        twstring  GetStrParam(int param); 
         int  GetParam(int iIdx); 
+        tvInt GetvParam(void) { return viIdx; }
         eState GetState(void) {return iState;}
-        twstring  GetDesc(void) { return wDescrip; }
+        twstring  GetHelp(void) { return sHelp; }
 
         int Call(void);
 
         static ConsolHandling *parent;
 
     private:
-        twstring     wStr;
+        tvString     vStr;
         tvInt        viIdx;
         tfunc        func;
 
-        twstring     wDescrip;
+        twstring     sHelp;
         eState       iState;      
 
 
@@ -82,6 +84,7 @@ private:
 
     int Wrong(ParamStruct &ps);
 
+    int GetIdx(const twstring &VarName, const twstring &Description, bool bAll = false, bool bAllData = false);
 
     int GetBootVariable(const twstring &VarName, bool bView = true);
 
@@ -146,5 +149,13 @@ private:
     int ListDriversView(void);
 
     int ListDriversA(ParamStruct &ps);
+
+    int SetActive(ParamStruct &ps);
+    
+    int SetActiven(ParamStruct &ps);
+
+    int ChgDesi(ParamStruct &ps);
+
+    int ChgDesn(ParamStruct &ps);
 };
 

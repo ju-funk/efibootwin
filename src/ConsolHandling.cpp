@@ -13,12 +13,12 @@ ConsolHandling::ConsolHandling()
 }
 
 
-ConsolHandling::ParamStruct::ParamStruct(tfunc Cmd, eState State, twstring Descr) :
-                func(Cmd), wStr(L""), iState(State), wDescrip(Descr)
+ConsolHandling::ParamStruct::ParamStruct(tfunc Cmd, eState State, twstring Help) :
+                func(Cmd), iState(State), sHelp(Help)
 {
     parent->vParamStruct.push_back(*this);
 
-    parent->mCommands[wDescrip[0]] = parent->vParamStruct.size() - 1;
+    parent->mCommands[sHelp[0]] = parent->vParamStruct.size() - 1;
 }
 
 int  ConsolHandling::ParamStruct::GetParam(int iIdx) 
@@ -28,6 +28,15 @@ int  ConsolHandling::ParamStruct::GetParam(int iIdx)
     else
         return -1;
 }
+
+twstring  ConsolHandling::ParamStruct::GetStrParam(int iIdx)
+{
+    if(iIdx < vStr.size())
+        return vStr[iIdx];
+    else
+        return twstring();
+}
+
 
 int ConsolHandling::ParamStruct::Call(void)
 {
@@ -39,6 +48,7 @@ int ConsolHandling::ParamStruct::Call(void)
 
 void ConsolHandling::DefineParams(void)
 {
+    ParamStruct unkn  (&ConsolHandling::Unknow      , eOnly   , L" \n");
     ParamStruct help  (&ConsolHandling::Help        , eOnly   , L"?            Help\n");
     ParamStruct getBN (&ConsolHandling::GetBootNext , eOnly   , L"n            Get the BootNext Value\n");
     ParamStruct setBNi(&ConsolHandling::SetBootNexti, eOneInt , L"N  idx       Set the BootNext Value with idx (hex)\n");
@@ -57,9 +67,16 @@ void ConsolHandling::DefineParams(void)
     ParamStruct setBT (&ConsolHandling::SetTimeout  , eOneInt , L"T  idx       Set the Timeout Value with idx (hex)\n");
     ParamStruct setBTe(&ConsolHandling::DelTimeout  , eOnly   , L"I            Remove the Timeout Value\n");
     ParamStruct getBVL(&ConsolHandling::ListBoots   , eOnly   , L"b            List the BootXXXX \n");
-    ParamStruct getBVA(&ConsolHandling::ListBootsA  , eOnly   , L"B            List all the DriverXXXX (have wait...)\n");
+    ParamStruct getBVA(&ConsolHandling::ListBootsA  , eOnly   , L"B            List all the BootXXXX (have wait...)\n");
     ParamStruct getDVL(&ConsolHandling::ListDrivers , eOnly   , L"d            List the DriverXXXX \n");
     ParamStruct getDVA(&ConsolHandling::ListDriversA, eOnly   , L"D            List all the DriverXXXX (have wait...)\n");
+
+    ParamStruct setBAi(&ConsolHandling::SetActive   , eOneInt , L"f  idx       Toggle the Active-Flag of Boot idx (hex)\n");
+    ParamStruct setBAN(&ConsolHandling::SetActiven  , eOneStr , L"F  Name      Toggle the Active-Flag with Boot decription\n");
+
+    ParamStruct setDei(&ConsolHandling::ChgDesi     , eIntStr , L"d  idx  Des  Change the description of Boot idx (hex)\n");
+    ParamStruct setDeN(&ConsolHandling::ChgDesn     , eStrStr , L"D  Name Des  Change the description (Des) with Boot decription (Name)\n");
+
 }
 
 bool ConsolHandling::Init(void)
@@ -114,6 +131,7 @@ void ConsolHandling::ScanArgs(int argc, wchar_t *argv[])
     {
         twstring str =  argv[i];
         twstring nxt = (argc > i + 1) ? argv[i+1] : L"";
+        twstring nx2 = (argc > i + 2) ? argv[i+2] : L"";
 
         bool bCmd    = testCmdChar(str[0]);
         bool bnxtCmd = testCmdChar(nxt.empty() ? L' ' : nxt[0]);
@@ -210,6 +228,41 @@ void ConsolHandling::ScanArgs(int argc, wchar_t *argv[])
                         return;
                     }
                     break;
+
+                case eIntStr:
+                    if (!bnxtCmd && !nxt.empty() && !nx2.empty())
+                    {
+                        wchar_t *p;
+
+                        int num = (int)wcstol(nxt.c_str(), &p, 16);
+                        if ((*p != 0) || (num < 0))
+                        {
+                            errfunc(&ConsolHandling::Wrong);
+                            return;
+                        }
+                        else if (num > 0xFFFF)
+                        {
+                            errfunc(&ConsolHandling::Wrong);
+                            return;
+                        }
+
+                        currPar.SetParam(num);
+                        currPar.SetParam(nx2.c_str());
+
+                        i += 2;
+                    }
+                    break;
+
+                case eStrStr:
+                    if (!bnxtCmd && !nxt.empty() && !nx2.empty())
+                    {
+                        currPar.SetParam(nxt.c_str());
+                        currPar.SetParam(nx2.c_str());
+
+                        i += 2;
+                    }
+                    break;
+
                 case eUnknown:
                     errfunc(&ConsolHandling::Unknow);
                     return;
@@ -265,6 +318,9 @@ void ConsolHandling::MapErrString(DWORD dErr, twstring &sMsg)
     case UVH_Error_Var_NotFound:
         sMsg = L"can not found";
         break;
+
+    case UVH_Error_Size_Differ:
+        sMsg = L"Lenght mismatch";
     }
 }
 
@@ -273,12 +329,15 @@ int ConsolHandling::Help(ParamStruct &ps)
 {
     (void)ps;
 
-    wprintf(L"The syntax of %s :\n", sName.c_str());
+    wprintf(L"The syntax of %s [command command]:\n", sName.c_str());
     wprintf(L" The commands can be begin with \'-\' or \'/\'\n");
     wprintf(L" The commands are:\n");
 
     for (ParamStruct &sp : vParamStruct)
-        wprintf(L"   %s", sp.GetDesc().c_str());
+        wprintf(L"   %s", sp.GetHelp().c_str());
+
+
+    wprintf(L"\nWithout commands you get all the available Uefi-variables\n");
 
     return 0;
 }
@@ -356,6 +415,27 @@ int ConsolHandling::DelBootVariable(const twstring &VarName)
 }
 
 
+int ConsolHandling::GetIdx(const twstring &VarName, const twstring &Description, bool bAll /*= false*/, bool bAllData /*= false*/)
+{
+    int  ret = -1;
+    UefiVarHandling::tvMEFI_LOAD_OPTION strs = ufh.EnumVariableData(VarName, bAll, bAllData);
+    std::map<twstring, size_t> search;
+
+    for (size_t i = 0; i < strs.size(); ++i)
+        search[strs[i].Description] = i;
+
+    auto it = search.find(Description);
+
+    if (it != search.end())
+        ret = (int) it->second;
+    else
+        ufh.SetState(UVH_Error_Var_NotFound);
+
+    return ret;
+}
+
+
+
 int ConsolHandling::GetBootNext(ParamStruct &ps)
 {
     (void)ps;
@@ -369,26 +449,16 @@ int ConsolHandling::SetBootNexti(ParamStruct &ps)
 
 int ConsolHandling::SetBootNextn(ParamStruct &ps)
 {
-    int  ret = -1;
-    UefiVarHandling::tvMEFI_LOAD_OPTION strs = ufh.EnumVariableData(L"Boot", false);
-    std::map<twstring, size_t> search;
-
-    for (size_t i = 0; i < strs.size(); ++i)
-        search[strs[i].Description] = i;
-
-    auto it = search.find(ps.GetParam());
-
-    if (it != search.end())
-        ret = SetBootVariable(L"BootNext", (UINT16)it->second, false);
-    else
-        ufh.SetState(UVH_Error_Var_NotFound);
-
+    int  ret = GetIdx(L"Boot", ps.GetStrParam(0));
 
     if (ret > -1)
-        wprintf(L"BootNext      : Set to %s (%04x)\n", ps.GetParam().c_str(), (int)it->second);
+        ret = SetBootVariable(L"BootNext", (UINT16)ret, false);
+
+    if (ret > -1)
+        wprintf(L"BootNext      : Set to %s (%04x)\n", ps.GetStrParam(0).c_str(), ret);
     else
     {
-        wprintf(L"BootNext      : Set Error %s : %s\n", ufh.GetStateString().c_str(), ps.GetParam().c_str());
+        wprintf(L"BootNext      : Set Error %s : %s\n", ufh.GetStateString().c_str(), ps.GetStrParam(0).c_str());
         return -4;
     }
 
@@ -435,7 +505,6 @@ int ConsolHandling::GetOrder(const twstring &VarName, bool bView /*= true*/)
 
     if (ord.size() > 0)
         wprintf(L"% -14s: %s\n", VarName.c_str(), GetOrderStr(ord).c_str());
-
     else if(bView)
     {
         if (ufh.GetState(false) == ERROR_ENVVAR_NOT_FOUND)
@@ -476,7 +545,7 @@ int ConsolHandling::GetOrderName(const twstring &VarName)
     if (idx != twstring::npos)
         name.erase(idx);
 
-    UefiVarHandling::tvMEFI_LOAD_OPTION names = ufh.EnumVariableData(name, false);
+    UefiVarHandling::tvMEFI_LOAD_OPTION names = ufh.EnumVariableData(name, false, false);
 
     if ((ord.size() > 0) && names.size() > 0)
     {
@@ -583,7 +652,7 @@ int ConsolHandling::EnumsVariable(const twstring &VarName, bool bAll, bool bView
 {
     int  i;
 
-    UefiVarHandling::tvMEFI_LOAD_OPTION names = ufh.EnumVariableData(VarName, bAll);
+    UefiVarHandling::tvMEFI_LOAD_OPTION names = ufh.EnumVariableData(VarName, bAll, false);
 
     twstring gap = VarName == L"Boot" ? L"  " : L"";
 
@@ -638,6 +707,68 @@ int ConsolHandling::ListDriversA(ParamStruct &ps)
     return EnumsVariable(L"Driver", true, true);
 }
 
+
+int ConsolHandling::SetActive(ParamStruct &ps)
+{   
+    int ret = -1;
+    int idx = ps.GetParam(0);
+    twstring vn;
+
+    
+    if (idx > -1)
+    {
+        vn = L"Boot" + twstring(UefiVarHandling::GetHex(idx));
+        ret = ufh.ToggleActive(vn) > -1 ? 0 : -6; 
+    }
+
+    if (ret > -1)
+        wprintf(L"%s      : Set %s Active = %i\n", vn.c_str(), ps.GetStrParam(0).c_str(), ret);
+    else
+        wprintf(L"BootXXXX      : Set Error %s\n", ufh.GetStateString().c_str());
+    
+    return ret;
+}
+
+int ConsolHandling::SetActiven(ParamStruct &ps)
+{
+    int  idx = GetIdx(L"Boot", ps.GetStrParam(0));
+
+    ps.SetParam(idx);
+    return SetActive(ps);
+}
+
+
+int ConsolHandling::ChgDesi(ParamStruct &ps)
+{
+    int ret = -7;
+    int idx = ps.GetParam(0);
+    twstring vn;
+
+
+    if (idx > -1)
+    {
+        vn = L"Boot" + twstring(UefiVarHandling::GetHex(idx));
+        ret = ufh.ChangeDescription(vn, ps.GetStrParam(0)) ? 0 : -7;
+    }
+
+    if (ret > -1)
+        wprintf(L"%s      : Changed description to %s\n", vn.c_str(), ps.GetStrParam(0).c_str());
+    else
+        wprintf(L"BootXXXX      : Set Error %s : %s\n", ufh.GetStateString().c_str(), ps.GetStrParam(0).c_str());
+
+    return ret;
+
+}
+
+int ConsolHandling::ChgDesn(ParamStruct &ps)
+{
+    int  idx = GetIdx(L"Boot", ps.GetStrParam(0));
+
+    ParamStruct ps1;
+    ps1.SetParam(idx);
+    ps1.SetParam(ps.GetStrParam(1));
+    return ChgDesi(ps1);
+}
 
 
 ConsolHandling * ConsolHandling::ParamStruct::parent = nullptr;
