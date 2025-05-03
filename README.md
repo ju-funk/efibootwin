@@ -4,10 +4,10 @@ efibootwin is a Windows-Console program for Read/Set UEFI Variable (BootNext, Bo
 for help : efibootwin -? the output is
 efibootwin create by J. Funk, Ver 0.8.5
 
-The syntax of efibootwin [command command]:
+The syntax of efibootwin [command [option]]:
+```.dos
  The commands can be begin with '-' or '/'
  The commands are:
-
    ?            Help
    n            Get the BootNext Value
    N  idx       Set the BootNext Value with idx (hex)
@@ -33,8 +33,8 @@ The syntax of efibootwin [command command]:
    F  Name      Toggle the Active-Flag with Boot decription
    d  idx  Des  Change the description of Boot idx (hex)
    D  Name Des  Change the description (Des) with Boot decription (Name)
-
+```
 Without commands you get all the available Uefi-variables
 
-I using this UEFI-Spec https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf for develop
+I using this [UEFI-Spec](https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf) for develop
 
